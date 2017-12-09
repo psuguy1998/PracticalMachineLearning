@@ -1,0 +1,135 @@
+---
+title: "Practical Machine Learning Week 4 Assignment"
+author: "Justin"
+date: "December 9, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+### Goal: The goal of this assignment is to predict the performance of an excerise based on accelerometer data
+
+### Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+### Data 
+The training data for this project are available here: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+The test data are available here:https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment. 
+What you should submit
+
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases. 
+
+### What you should submit
+Your submission for the Peer Review portion should consist of a link to a Github repo with your R markdown and compiled HTML file describing your analysis. Please constrain the text of the writeup to < 2000 words and the number of figures to be less than 5. It will make it easier for the graders if you submit a repo with a gh-pages branch so the HTML page can be viewed online (and you always want to make it easy on graders :-).
+
+# General Approach
+1. Download the training and testing data
+2. Partition the training data into 75% for training and 25% for cross validation
+3. Transform the data to clean it up
+4. Create model using random forest
+5. Predict which of the 5 classes of the exercise was performed based on the model.  The variable is classe Class A represents the proper method of movement for the exercise and the other 4 classes are mistakes
+6. The expected out-of-sample error will be 1 minus the accuracy of the cross validation data, which was (1-0.9953)=0.0047.  
+
+## Load Libraries, set location of files, and set seed so reproducible
+```{r message=FALSE}
+library(caret)
+library(ggplot2)
+library(randomForest)
+
+location<-"C:/Users/Justin/Desktop/R Files/Coursera/Practical Machine Learning/Assignments/Week4/"
+
+set.seed(9999) 
+
+```
+
+## Load testing and training data
+```{r}
+traindata<-read.csv(paste(location, "pml-training.csv", sep=""))  ## training data
+finaltestdata<-read.csv(paste(location, "pml-testing.csv", sep=""))  ## final testing data
+```
+
+## Create the training data partition
+```{r}
+inTrain<-createDataPartition(y=traindata$classe, p=0.75, list=FALSE)
+training<-traindata[inTrain,]
+testing<-traindata[-inTrain,] ## testing for cross validation - not to be confused with finaltestdata
+```
+
+## Transform the data
+
+### Remove the first 7 variables, which are things like username and time stamp
+```{r}
+training<-training[,-(1:7)]
+testing<-testing[,-(1:7)]
+finaltestdata<-finaltestdata[,-(1:7)]
+
+```
+
+### Get rid of the low variance variables
+```{r}
+nzvTrain<-nearZeroVar(training, saveMetrics=TRUE)
+training<-training[,!as.logical(nzvTrain$nzv)]
+testing<-testing[,!as.logical(nzvTrain$nzv)]
+finaltestdata<-finaltestdata[,!as.logical(nzvTrain$nzv)]
+```
+
+### Get rid of variables with lots of NAs
+```{r}
+HighNA <- function(vector){
+  if(sum(is.na(vector))/length(vector) > 0.75){outcome <- TRUE;} 
+  else{outcome<- FALSE;}
+  }
+
+trainingHighNA<-sapply(training,HighNA)
+training<-training[,!trainingHighNA]
+testing<-testing[,!trainingHighNA]
+finaltestdata<-finaltestdata[,!trainingHighNA]
+```
+
+### Convert remaining variables to numeric
+```{r}
+training[,-ncol(training)]<-data.frame(sapply(training[,-ncol(training)], as.numeric))
+testing[,-ncol(testing)]<-data.frame(sapply(testing[,-ncol(testing)], as.numeric))
+finaltestdata[,-ncol(finaltestdata)]<-data.frame(sapply(finaltestdata[,-ncol(finaltestdata)],as.numeric))
+```
+
+## Build random forest model based on the training data
+
+```{r}
+modelRF<- randomForest(classe ~. , data=training)
+```
+
+## Figure out which variables are the best predictors
+
+```{r}
+varImpPlot(modelRF,type=2)
+```
+
+## Plot the top two variables - roll_belt and yaw_belt 
+```{r}
+qplot(roll_belt,yaw_belt, color=classe, data=training)
+```
+
+
+## Test the model on the testing data set
+
+```{r}
+predRF <- predict(modelRF, testing, type = "class")
+confusionMatrix(predRF, testing$classe)
+```
+
+The accuracy of 0.9953 looks pretty good, so let's test in the final test set
+
+# Predict the classe variable for the final test data set
+```{r}
+predtest<-predict(modelRF,finaltestdata,type="class")
+predtest
+```
+
+
+
